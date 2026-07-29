@@ -1,0 +1,449 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "AppController_getHello",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "description": "Returns an access token and sets the httpOnly refresh cookie.",
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in."
+          },
+          "401": {
+            "description": "Bad credentials, or the account has no password because it uses social sign-in."
+          }
+        },
+        "summary": "Sign in with username and password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "description": "Signs the new user straight in — there is no separate login step and no email verification.",
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewUserDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registered and signed in."
+          },
+          "401": {
+            "description": "Username already taken."
+          }
+        },
+        "summary": "Register a new user",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "description": "No request body — the httpOnly cookie is the credential. The cookie is rotated on every success; a 401 here is terminal, so send the user to sign in rather than retrying.",
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "New access token issued, refresh cookie rotated."
+          },
+          "401": {
+            "description": "Missing, expired, or already-used refresh token. Reuse revokes the whole session."
+          }
+        },
+        "security": [
+          {
+            "refresh_token": []
+          }
+        ],
+        "summary": "Rotate the refresh token for a new access token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "description": "Revokes this token family and clears the cookie. Other devices are unaffected. Returns 204 whether or not a valid cookie was sent.",
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "Session ended."
+          }
+        },
+        "security": [
+          {
+            "refresh_token": []
+          }
+        ],
+        "summary": "End this session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/google": {
+      "get": {
+        "description": "Navigate the browser here — not fetch/XHR. Redirects to Google with state and a PKCE challenge.",
+        "operationId": "AuthController_googleRedirect",
+        "parameters": [],
+        "responses": {
+          "302": {
+            "description": "Redirect to Google."
+          }
+        },
+        "summary": "Begin Google sign-in",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/google/callback": {
+      "get": {
+        "description": "Verifies state against the cookie, redeems the code, then redirects to FRONTEND_POST_LOGIN_URL with the refresh cookie set. No token appears in the URL.",
+        "operationId": "AuthController_googleCallback",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the frontend."
+          },
+          "401": {
+            "description": "Missing, mismatched, or wrong-provider state cookie."
+          }
+        },
+        "summary": "Google returns here",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/google/token": {
+      "post": {
+        "description": "For clients using the Google SDK. Body: { idToken }.",
+        "operationId": "AuthController_googleToken",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderTokenDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in."
+          },
+          "400": {
+            "description": "idToken missing."
+          },
+          "401": {
+            "description": "ID token failed verification."
+          }
+        },
+        "summary": "Exchange a Google ID token for a session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/facebook": {
+      "get": {
+        "description": "Navigate the browser here — not fetch/XHR.",
+        "operationId": "AuthController_facebookRedirect",
+        "parameters": [],
+        "responses": {
+          "302": {
+            "description": "Redirect to Facebook."
+          }
+        },
+        "summary": "Begin Facebook sign-in",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/facebook/callback": {
+      "get": {
+        "operationId": "AuthController_facebookCallback",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the frontend."
+          },
+          "401": {
+            "description": "Missing, mismatched, or wrong-provider state cookie."
+          }
+        },
+        "summary": "Facebook returns here",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/facebook/token": {
+      "post": {
+        "description": "For clients using the Facebook SDK. Body: { accessToken } — note Facebook yields an access token, not an ID token.",
+        "operationId": "AuthController_facebookToken",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderTokenDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in."
+          },
+          "400": {
+            "description": "accessToken missing."
+          },
+          "401": {
+            "description": "Token invalid, or issued for a different Facebook app."
+          }
+        },
+        "summary": "Exchange a Facebook access token for a session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/all-users": {
+      "get": {
+        "description": "WARNING: unauthenticated and returns full user rows including the password hash. Do not build on this; it needs guarding and field selection.",
+        "operationId": "AuthController_getAllUsers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "List all users",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/items/get-all-items": {
+      "get": {
+        "description": "Public — no authentication. Returns the 20 most recently created items with the given tag, newest first, excluding expired and discontinued items. Out-of-stock items are still listed.",
+        "operationId": "ItemsController_getAllItems",
+        "parameters": [
+          {
+            "name": "tag",
+            "required": true,
+            "in": "query",
+            "description": "Which tag to filter by.",
+            "schema": {
+              "enum": [
+                "men",
+                "women",
+                "sale",
+                "new"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemListResponseDTO"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List the 20 newest items carrying a tag",
+        "tags": [
+          "catalog"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Clothing Store API",
+    "description": "Authentication, catalogue and ordering endpoints. Generated from the controllers, so it cannot drift from the code.",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "access-token": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      },
+      "cookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "refresh_token",
+        "description": "httpOnly refresh cookie, scoped to /auth. Set at sign-in and rotated by POST /auth/refresh."
+      }
+    },
+    "schemas": {
+      "LoginDTO": {
+        "type": "object",
+        "properties": {}
+      },
+      "NewUserDTO": {
+        "type": "object",
+        "properties": {}
+      },
+      "ProviderTokenDTO": {
+        "type": "object",
+        "properties": {}
+      },
+      "ItemListEntryDTO": {
+        "type": "object",
+        "properties": {
+          "itemid": {
+            "type": "number",
+            "example": 12
+          },
+          "itemcode": {
+            "type": "string",
+            "example": "TEE-001"
+          },
+          "title": {
+            "type": "string",
+            "example": "Basic Tee"
+          },
+          "primary_pic_link": {
+            "type": "object",
+            "example": "https://cdn.example.com/tee-001-front.jpg",
+            "nullable": true,
+            "description": "The image tagged `primary`, or null if the item has none."
+          },
+          "secondary_pic_link": {
+            "type": "object",
+            "example": "https://cdn.example.com/tee-001-back.jpg",
+            "nullable": true,
+            "description": "The image tagged `secondary`, or null if the item has none."
+          },
+          "price": {
+            "type": "number",
+            "example": 2500
+          },
+          "discount_amount": {
+            "type": "number",
+            "example": 375,
+            "description": "The largest currently-valid discount for this item, in currency. Percentage and fixed discounts are compared after conversion, so this is the amount actually taken off. 0 when nothing applies."
+          },
+          "message": {
+            "type": "object",
+            "example": "Only 2 left in stock!",
+            "nullable": true,
+            "description": "Set only when total stock across every variant is 1, 2 or 3. Null otherwise — including when the item is out of stock."
+          }
+        },
+        "required": [
+          "itemid",
+          "itemcode",
+          "title",
+          "primary_pic_link",
+          "secondary_pic_link",
+          "price",
+          "discount_amount",
+          "message"
+        ]
+      },
+      "ItemListResponseDTO": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItemListEntryDTO"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      }
+    }
+  }
+}
