@@ -70,9 +70,10 @@ const renderMarkdown = (doc: OpenAPIObject): string => {
     'Interactive docs run at `GET /api/docs` when `SWAGGER_ENABLED` is true;',
     'the machine-readable spec is [`openapi.json`](openapi.json).',
     '',
-    '> **No endpoint is currently protected.** `AuthGuard` exists but is never',
-    '> applied with `@UseGuards`, so the "Auth" column below describes the',
-    '> intended requirement, not something the server enforces yet.',
+    '> `AuthGuard` is registered **globally**: every route requires a valid Bearer',
+    '> access token unless it is marked `@Public()`. The Auth column below is',
+    '> enforced, not aspirational. "Refresh cookie" routes are public to the guard',
+    '> and authenticate with the httpOnly cookie instead.',
     '',
   ];
 

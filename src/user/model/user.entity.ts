@@ -1,6 +1,13 @@
-
 import { TimedEntity } from 'src/common/entity/timed.entity';
-import { Entity, Column, PrimaryGeneratedColumn, BeforeInsert, OneToMany, Unique } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  BeforeInsert,
+  OneToMany,
+  Unique,
+  Check,
+} from 'typeorm';
 import bcrypt from 'bcryptjs';
 import { UserIdentity } from './user-identity.entity';
 
@@ -8,6 +15,7 @@ import { UserIdentity } from './user-identity.entity';
 // column so their names match the migration; otherwise TypeORM derives hashed
 // names and every `migration:generate` reports phantom drift.
 @Entity('users')
+@Check('CHK_users_role', `"role" IN ('buyer','admin','super_admin')`)
 @Unique('UQ_users_email', ['email'])
 @Unique('UQ_users_user_name', ['userName'])
 export class User extends TimedEntity {
@@ -54,7 +62,7 @@ export class User extends TimedEntity {
   @BeforeInsert()
   async hashPassword() {
     if (this.passwordHash) {
-      const salt = await bcrypt.genSalt(10)
+      const salt = await bcrypt.genSalt(10);
       this.passwordHash = await bcrypt.hash(this.passwordHash, salt);
     }
   }

@@ -74,6 +74,25 @@ Keeping drift at zero constrains how entities are written:
   `BEFORE UPDATE` trigger calling `set_updated_at()` (created in the baseline migration).
 - Timestamp defaults must be `now()`, not `CURRENT_TIMESTAMP`, or the diff reports drift.
 
+### Everything is protected by default
+
+`AuthGuard` is registered globally through `APP_GUARD` in `src/app.module.ts`. A new route
+requires a valid Bearer token unless it carries `@Public()` — so forgetting a decorator
+produces a 401 rather than an open endpoint, which is the failure mode that left
+`/auth/all-users` publicly serving password hashes.
+
+`@Public()` is on the sign-in routes, the OAuth round trips, the public catalogue, and
+**`/auth/refresh` and `/auth/logout`** — those two authenticate with the httpOnly refresh
+cookie, not the `Authorization` header, so guarding them breaks every session renewal.
+
+Protected handlers receive `AuthenticatedRequest` (`src/auth/authenticated-request.ts`)
+and must take the user id from `request.user.userId`, never from a parameter or body.
+
+`RolesGuard` is registered as a second `APP_GUARD`, **after** `AuthGuard` — order matters,
+because it reads the `request.user` that `AuthGuard` attaches. It enforces `@Roles(...)`
+and ignores routes that carry none. `@Roles()` on a `@Public()` route is refused rather
+than allowed: there is no verified user to check.
+
 ### Auth pipeline
 
 Everything downstream of "verified profile" is provider-agnostic. Google and Facebook

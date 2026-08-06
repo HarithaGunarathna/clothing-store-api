@@ -28,7 +28,8 @@ import { TokenConfig } from 'src/config/token.config';
         signOptions: { expiresIn: TokenConfig(configService).accessTokenTtl },
       }),
       inject: [ConfigService],
-  })],
+    }),
+  ],
   exports: [AuthService, GoogleService, FacebookService, RefreshTokenService],
 })
 export class AuthModule {}

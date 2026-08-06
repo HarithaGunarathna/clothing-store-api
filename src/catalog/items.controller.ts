@@ -15,6 +15,7 @@ import {
 import { ItemsService } from './items.service';
 import { ItemListResponseDTO } from './dto/itemListDTO';
 import { ItemTags } from 'src/constants/item-status.enum';
+import { Public } from 'src/auth/public.decorator';
 
 const ALLOWED_TAGS = Object.values(ItemTags);
 
@@ -23,6 +24,7 @@ const ALLOWED_TAGS = Object.values(ItemTags);
 export class ItemsController {
   constructor(private readonly itemsService: ItemsService) {}
 
+  @Public()
   @Get('get-all-items')
   @HttpCode(200)
   // A catalogue is public and identical for every visitor, so it is worth

@@ -8,7 +8,7 @@
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat)
 ![Node](https://img.shields.io/badge/Node.js-18%2B-339933?style=flat&logo=nodedotjs&logoColor=white)
 
-A RESTful API backend for a clothing store platform built with [NestJS](https://nestjs.com/), TypeORM, and PostgreSQL. Supports user registration, JWT authentication, social sign-in with Google and Facebook, and role-based access (buyer / seller / admin).
+A RESTful API backend for a clothing store platform built with [NestJS](https://nestjs.com/), TypeORM, and PostgreSQL. Supports user registration, JWT authentication, social sign-in with Google and Facebook, and role-based access (buyer / admin / super admin).
 
 ---
 
@@ -38,7 +38,7 @@ src/
 │   ├── database/       # TypeORM module setup
 │   └── entity/         # TimedEntity, AuditableEntity base classes
 ├── config/             # database.config.ts, data-source.ts (CLI), google/facebook config
-├── constants/          # role.enum.ts (Buyer | Seller | Admin)
+├── constants/          # role.enum.ts (Buyer | Admin | SuperAdmin)
 ├── migrations/         # Versioned schema migrations
 ├── roles/              # @Roles() decorator
 ├── app.module.ts
@@ -188,6 +188,14 @@ controllers by `npm run api:catalog`. Interactive docs are served at `/api/docs`
 |---|---|---|---|
 | GET | `/api/v1/items/get-all-items?tag=` | No | The 20 newest items carrying a tag |
 
+### Admin
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/v1/admin/get-all-admins` | `super_admin` | List all administrators |
+| DELETE | `/api/v1/admin/delete-admin/:id` | `super_admin` | Deactivate an administrator |
+| POST | `/api/v1/admin/create-admin` | `super_admin` | Create a new administrator |
+
 `tag` is required and must be one of `men`, `women`, `sale`, `new`. Anything else is
 `400`. Items with status `expired` or `discontinued` are excluded; out-of-stock items are
 still listed.
@@ -218,16 +226,18 @@ currency, so a 50% discount beats a flat 600 on a 2500 item. The response is cac
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | POST | `/auth/register` | No | Register a new user; returns an access token and sets the refresh cookie |
-| POST | `/auth/login` | No | Login; returns an access token and sets the refresh cookie |
+| POST | `/auth/login` | No | Storefront login (buyers); returns an access token and sets the refresh cookie |
+| POST | `/auth/admin/login` | No | Administrator login, username + password only |
 | POST | `/auth/refresh` | Refresh cookie | Rotate the refresh token, get a new access token |
 | POST | `/auth/logout` | Refresh cookie | End this session (other devices unaffected) |
+| GET | `/auth/me` | Bearer token | The signed-in user's own profile |
 | GET | `/auth/google` | No | Redirect to Google to begin sign-in |
 | GET | `/auth/google/callback` | No | Google returns here; redirects to the frontend with a JWT |
 | POST | `/auth/google/token` | No | Exchange a Google ID token for a JWT |
 | GET | `/auth/facebook` | No | Redirect to Facebook to begin sign-in |
 | GET | `/auth/facebook/callback` | No | Facebook returns here; redirects to the frontend with a JWT |
 | POST | `/auth/facebook/token` | No | Exchange a Facebook access token for a JWT |
-| GET | `/auth/all-users` | No | List all users |
+| GET | `/auth/all-users` | Bearer token | List all users (safe columns only) |
 
 #### POST `/auth/register`
 
@@ -241,8 +251,7 @@ Request body:
   "email": "jane@example.com",
   "password": "secret",
   "phoneNumber": "0771234567",
-  "dob": "1995-06-15",
-  "role": "buyer"
+  "dob": "1995-06-15"
 }
 ```
 
@@ -272,6 +281,29 @@ Response `200`:
   "access_token": "<jwt>"
 }
 ```
+
+#### Administrator sign-in
+
+Administrators use a separate endpoint and cannot sign in any other way.
+
+```jsonc
+POST /auth/admin/login
+{ "userName": "boss", "password": "secret" }
+```
+
+The two surfaces are mutually exclusive: an `admin` or `super_admin` account is rejected
+at `/auth/login`, and a `buyer` is rejected at `/auth/admin/login`. Both rejections return
+exactly the same message as a wrong password — `Incorrect Username or Password` — so
+neither endpoint can be used to discover which usernames are privileged.
+
+**Administrators have no Google or Facebook sign-in.** A social profile can never resolve
+to an admin account, even when the provider reports the same verified email: linking is
+refused, and an identity linked before the account was promoted stops working the moment
+it is. Without that rule, promoting a user to admin would silently hand out an admin
+session to anyone signing in with the matching Google account.
+
+A successful admin sign-in returns the same access token and refresh cookie as the
+storefront, so `/auth/refresh`, `/auth/logout` and `/auth/me` behave identically.
 
 #### Sessions: access tokens and refresh tokens
 
@@ -416,11 +448,49 @@ method then signs into the same account.
 
 #### Using the JWT
 
-Include the token in the `Authorization` header for protected routes:
+`AuthGuard` is registered globally, so **every route requires a valid access token unless
+it is explicitly marked `@Public()`**. New endpoints are therefore protected by default.
 
 ```
 Authorization: Bearer <access_token>
 ```
+
+Public today: the health check, the item listing, sign-in and registration, the OAuth
+round trips, and `/auth/refresh` + `/auth/logout` — those last two authenticate with the
+httpOnly refresh cookie rather than this header.
+
+#### GET `/auth/me`
+
+The signed-in user's profile, for an account page. The user id comes from the token, so
+this can only ever return the caller's own account.
+
+```jsonc
+{
+  "id": 12,
+  "firstName": "Jane",
+  "lastName": "Doe",
+  "userName": "janedoe",            // null for social-only accounts
+  "email": "jane@example.com",
+  "emailVerified": true,
+  "phoneNumber": "0771234567",      // nullable
+  "dob": "1995-06-15",              // nullable
+  "role": "buyer",
+  "isActive": true,
+  "createdAt": "2026-07-01T09:12:44.000Z",
+  "hasPassword": true,              // false => offer "Set a password"
+  "connectedProviders": ["google"], // [] for password-only accounts
+  "defaultBillingAddress": {        // null until the user saves one
+    "id": 3, "label": "Home", "line1": "221B Galle Road", "line2": null,
+    "city": "Colombo", "postalCode": "00300", "country": "LK", "phone": "0771234567"
+  },
+  "defaultDeliveryAddress": { "id": 3, "...": "may be the SAME row as billing" }
+}
+```
+
+The password hash is never returned — `hasPassword` reports only whether one is set,
+which is how the page decides between "Change password" and "Set a password". Both
+address fields are `null` until the user saves one, and may resolve to the same address
+row, since one address can be flagged as both defaults.
 
 ---
 
@@ -429,10 +499,156 @@ Authorization: Bearer <access_token>
 | Role | Value |
 |---|---|
 | Buyer | `buyer` |
-| Seller | `seller` |
 | Admin | `admin` |
+| Super Admin | `super_admin` |
 
-Roles are assigned at registration. A `@Roles()` decorator is available for future role-guard implementation.
+**Registration always creates a `buyer`.** Any `role` in the request body is ignored, so
+the endpoint cannot be used to self-assign `admin` or `super_admin`. Social sign-ups
+default to `buyer` too. A `CHK_users_role` constraint enforces the set at the database.
+
+### Creating an administrator
+
+There is no API endpoint for this by design — self-registration only ever creates buyers,
+so the first administrator has to come from somewhere the public cannot reach:
+
+```bash
+npm run admin:create -- --username=boss --email=boss@example.com --password='…'
+npm run admin:create -- --help          # all options
+```
+
+`--role` accepts `super_admin` (default) or `admin`. To keep the password out of your
+shell history, pass it as `ADMIN_PASSWORD` instead of `--password`.
+
+The script saves through the `User` repository so the entity's `@BeforeInsert()` hook
+hashes the password with the same bcrypt cost the login path verifies against. **Writing
+the row with raw SQL skips that hook** and stores the password in clear, producing an
+account that can never sign in — use `crypt(…, gen_salt('bf', 10))` from `pgcrypto` if you
+must do it in SQL.
+
+To promote an account that already exists, use the API (below), or SQL for the very first
+super admin:
+
+```sql
+UPDATE users SET role = 'super_admin' WHERE user_name = 'you';
+```
+
+### Managing administrators
+
+```
+GET    /api/v1/admin/get-all-admins      (no request body)
+DELETE /api/v1/admin/delete-admin/:id    (no request body — id is in the path)
+```
+
+Both require `super_admin`; an `admin` gets `403`. `get-all-admins` returns every admin and
+super admin newest first, deactivated ones included — check `isActive`. Password hashes are
+never returned.
+
+`delete-admin` **deactivates rather than deletes**: `orders.user_id` is `ON DELETE
+RESTRICT`, so removing the row would fail for anyone who has ever ordered, and would
+destroy order history. The account and its role are kept, `is_active` becomes false, and
+every session is ended. The account can then sign in nowhere — password login checks
+`is_active` as well as refresh does. Reversing it is an `is_active` update; there is no
+reactivation endpoint yet.
+
+It refuses to target yourself (`403`), a non-administrator (`400`), an already-deactivated
+account (`409`), or the last active super admin (`409`).
+
+### Creating administrators
+
+Buyers are **never promoted** into administrators — the two populations stay separate.
+Buyers arrive through public self-registration; an administrator is created as one, either
+by a super admin through the API or by the CLI script that bootstraps the first one.
+
+```jsonc
+POST /api/v1/admin/create-admin
+Authorization: Bearer <super admin access token>
+
+{
+  "userName": "newadmin",
+  "email": "newadmin@example.com",
+  "password": "pass12",
+  "firstName": "New",      // optional
+  "lastName": "Admin",     // optional
+  "phoneNumber": "0771234567",  // optional
+  "role": "admin"          // optional; admin (default) or super_admin
+}
+```
+
+Requires `super_admin` — an `admin` gets `403`. `role` accepts `admin` or `super_admin`
+only; `buyer` is rejected with `400`. The password must be at least 6 characters and is
+bcrypt-hashed before storage; it is never returned. A duplicate username or email is
+`409`.
+
+The new account signs in at `POST /auth/admin/login`, is refused at `/auth/login`, and has
+no Google or Facebook sign-in.
+
+### Creating an administrator
+
+There is no API endpoint for this by design — self-registration only ever creates buyers,
+so the first administrator has to come from somewhere the public cannot reach:
+
+```bash
+npm run admin:create -- --username=boss --email=boss@example.com --password='…'
+npm run admin:create -- --help          # all options
+```
+
+`--role` accepts `super_admin` (default) or `admin`. To keep the password out of your
+shell history, pass it as `ADMIN_PASSWORD` instead of `--password`.
+
+The script saves through the `User` repository so the entity's `@BeforeInsert()` hook
+hashes the password with the same bcrypt cost the login path verifies against. **Writing
+the row with raw SQL skips that hook** and stores the password in clear, producing an
+account that can never sign in — use `crypt(…, gen_salt('bf', 10))` from `pgcrypto` if you
+must do it in SQL.
+
+To promote an account that already exists, use the API (below), or SQL for the very first
+super admin:
+
+```sql
+UPDATE users SET role = 'super_admin' WHERE user_name = 'you';
+```
+
+### Managing administrators
+
+```
+GET    /api/v1/admin/get-all-admins      (no request body)
+DELETE /api/v1/admin/delete-admin/:id    (no request body — id is in the path)
+```
+
+Both require `super_admin`; an `admin` gets `403`. `get-all-admins` returns every admin and
+super admin newest first, deactivated ones included — check `isActive`. Password hashes are
+never returned.
+
+`delete-admin` **deactivates rather than deletes**: `orders.user_id` is `ON DELETE
+RESTRICT`, so removing the row would fail for anyone who has ever ordered, and would
+destroy order history. The account and its role are kept, `is_active` becomes false, and
+every session is ended. The account can then sign in nowhere — password login checks
+`is_active` as well as refresh does. Reversing it is an `is_active` update; there is no
+reactivation endpoint yet.
+
+It refuses to target yourself (`403`), a non-administrator (`400`), an already-deactivated
+account (`409`), or the last active super admin (`409`).
+
+### Changing a role
+
+```jsonc
+PATCH /api/v1/admin/users/42/role
+Authorization: Bearer <super admin access token>
+{ "role": "admin" }
+```
+
+**Only `super_admin` may change roles** — an `admin` calling this gets `403`. Two further
+rules protect against locking yourself out:
+
+- You cannot change **your own** role (`403`).
+- The **last** super admin cannot be demoted (`409`), since that would leave nobody able
+  to grant roles through the API.
+
+The response reports the previous and new role plus `sessionsRevoked`. A role change ends
+every session the target has, on all devices: the role travels inside the access token, so
+without this a demoted admin would keep their privileges until the token expired and could
+refresh in the meantime. The user signs in again afterwards — and once promoted, only
+through `/auth/admin/login`, since administrators have no social sign-in. A `@Roles()` decorator is available for future role-guard implementation.
 
 ---
 
@@ -451,7 +667,7 @@ Roles are assigned at registration. A `@Roles()` decorator is available for futu
 | `phone_number` | VARCHAR(20) | Nullable |
 | `date_of_birth` | DATE | Nullable |
 | `is_active` | BOOLEAN | Default `true` |
-| `role` | VARCHAR(50) | `buyer` / `seller` / `admin` |
+| `role` | VARCHAR(50) | `buyer` / `admin` / `super_admin`, enforced by `CHK_users_role` |
 | `password` | VARCHAR(255) | bcrypt hash, **nullable** — social-only users have none |
 | `created_at` | TIMESTAMP | Auto-set on insert |
 | `updated_at` | TIMESTAMP | Auto-updated via the `users_set_updated_at` trigger |

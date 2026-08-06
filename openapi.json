@@ -44,9 +44,38 @@
         ]
       }
     },
+    "/auth/admin/login": {
+      "post": {
+        "description": "Username and password only — administrators have no Google or Facebook sign-in, and a social profile can never resolve to an admin account. Accepts `admin` and `super_admin`; a buyer account is rejected. Returns the same access token and refresh cookie as the storefront sign-in.",
+        "operationId": "AuthController_adminLogin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in as an administrator."
+          },
+          "401": {
+            "description": "Bad credentials, or the account is not an administrator. The message is identical in both cases so this endpoint cannot be used to discover which usernames are privileged."
+          }
+        },
+        "summary": "Sign in as an administrator",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/auth/register": {
       "post": {
-        "description": "Signs the new user straight in — there is no separate login step and no email verification.",
+        "description": "Always creates a buyer — any `role` sent in the body is ignored, so this cannot be used to self-assign admin. Signs the new user straight in; there is no separate login step and no email verification.",
         "operationId": "AuthController_register",
         "parameters": [],
         "requestBody": {
@@ -285,9 +314,40 @@
         ]
       }
     },
+    "/auth/me": {
+      "get": {
+        "description": "Requires a Bearer access token. Returns the profile of whoever the token belongs to — the user id comes from the token, never from the request, so this cannot be used to read another account. The password hash is never included; `hasPassword` reports only whether one is set.",
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponseDTO"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, expired or invalid token, or the account no longer exists."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Get the signed-in user",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/auth/all-users": {
       "get": {
-        "description": "WARNING: unauthenticated and returns full user rows including the password hash. Do not build on this; it needs guarding and field selection.",
+        "description": "Requires authentication. Returns a fixed set of safe columns — never the password hash. Has no pagination or role check yet, so it is not suitable for a real admin screen.",
         "operationId": "AuthController_getAllUsers",
         "parameters": [],
         "responses": {
@@ -295,6 +355,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
         "summary": "List all users",
         "tags": [
           "auth"
@@ -339,6 +404,131 @@
           "catalog"
         ]
       }
+    },
+    "/api/v1/admin/get-all-admins": {
+      "get": {
+        "description": "Every admin and super admin, newest first, including deactivated ones (check `isActive`). No request body and no parameters. Password hashes are never included.",
+        "operationId": "AdminController_getAllAdmins",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminListDTO"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "List all administrators",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/delete-admin/{id}": {
+      "delete": {
+        "description": "Blocks the account from signing in and ends every session it has. The row and its role are kept — `orders.user_id` is ON DELETE RESTRICT, so hard-deleting anyone who has ordered would fail and would destroy order history. The id goes in the path; there is no request body. Refuses to target yourself, a non-administrator, or the last active super admin.",
+        "operationId": "AdminController_deleteAdmin",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Id of the administrator to deactivate.",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminDeactivatedDTO"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "That user is not an administrator."
+          },
+          "403": {
+            "description": "Caller is not a super admin, or is targeting themselves."
+          },
+          "404": {
+            "description": "No such user."
+          },
+          "409": {
+            "description": "Already deactivated, or this is the last active super admin."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Deactivate an administrator",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/create-admin": {
+      "post": {
+        "description": "Creates a fresh administrator account. Buyers are never promoted into administrators — an account is created as one here, or by the `admin:create` CLI script that bootstraps the first super admin. `role` defaults to admin and may also be super_admin; buyer is rejected. The new account signs in at POST /auth/admin/login and has no Google or Facebook sign-in.",
+        "operationId": "AdminController_createAdmin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAdminDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminCreatedDTO"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing field, password too short, or a non-administrator role."
+          },
+          "403": {
+            "description": "Caller is not a super admin."
+          },
+          "409": {
+            "description": "Username or email already taken."
+          }
+        },
+        "security": [
+          {
+            "access-token": []
+          }
+        ],
+        "summary": "Create a new administrator",
+        "tags": [
+          "admin"
+        ]
+      }
     }
   },
   "info": {
@@ -375,6 +565,170 @@
       "ProviderTokenDTO": {
         "type": "object",
         "properties": {}
+      },
+      "AddressDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 3
+          },
+          "label": {
+            "type": "object",
+            "example": "Home",
+            "nullable": true
+          },
+          "line1": {
+            "type": "string",
+            "example": "221B Galle Road"
+          },
+          "line2": {
+            "type": "object",
+            "example": null,
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "example": "Colombo"
+          },
+          "postalCode": {
+            "type": "object",
+            "example": "00300",
+            "nullable": true
+          },
+          "country": {
+            "type": "string",
+            "example": "LK"
+          },
+          "phone": {
+            "type": "object",
+            "example": "0771234567",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "line1",
+          "line2",
+          "city",
+          "postalCode",
+          "country",
+          "phone"
+        ]
+      },
+      "MeResponseDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 12
+          },
+          "firstName": {
+            "type": "object",
+            "example": "Jane",
+            "nullable": true
+          },
+          "lastName": {
+            "type": "object",
+            "example": "Doe",
+            "nullable": true
+          },
+          "userName": {
+            "type": "object",
+            "example": "janedoe",
+            "nullable": true,
+            "description": "Null for accounts created through Google or Facebook."
+          },
+          "email": {
+            "type": "string",
+            "example": "jane@example.com"
+          },
+          "emailVerified": {
+            "type": "boolean",
+            "example": true
+          },
+          "phoneNumber": {
+            "type": "object",
+            "example": "0771234567",
+            "nullable": true
+          },
+          "dob": {
+            "type": "object",
+            "example": "1995-06-15",
+            "nullable": true
+          },
+          "role": {
+            "type": "string",
+            "example": "buyer",
+            "enum": [
+              "buyer",
+              "admin",
+              "super_admin"
+            ]
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-07-01T09:12:44.000Z"
+          },
+          "hasPassword": {
+            "type": "boolean",
+            "example": true,
+            "description": "False for social-only accounts. Drives whether the profile page offers \"Change password\" or \"Set a password\"."
+          },
+          "connectedProviders": {
+            "example": [
+              "google"
+            ],
+            "description": "Linked identity providers; empty for password-only accounts.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "defaultBillingAddress": {
+            "nullable": true,
+            "description": "Null until the user saves one.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AddressDTO"
+              }
+            ]
+          },
+          "defaultDeliveryAddress": {
+            "nullable": true,
+            "description": "Null until the user saves one. May be the same address row as defaultBillingAddress — one address can be flagged as both.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AddressDTO"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "userName",
+          "email",
+          "emailVerified",
+          "phoneNumber",
+          "dob",
+          "role",
+          "isActive",
+          "createdAt",
+          "hasPassword",
+          "connectedProviders",
+          "defaultBillingAddress",
+          "defaultDeliveryAddress"
+        ]
       },
       "ItemListEntryDTO": {
         "type": "object",
@@ -442,6 +796,221 @@
         },
         "required": [
           "items"
+        ]
+      },
+      "AdminSummaryDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 1
+          },
+          "userName": {
+            "type": "object",
+            "example": "boss",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "example": "boss@example.com"
+          },
+          "firstName": {
+            "type": "object",
+            "example": "Site",
+            "nullable": true
+          },
+          "lastName": {
+            "type": "object",
+            "example": "Owner",
+            "nullable": true
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "super_admin"
+            ],
+            "example": "super_admin"
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": true,
+            "description": "False once deactivated — the account cannot sign in."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-07-01T09:12:44.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "userName",
+          "email",
+          "firstName",
+          "lastName",
+          "role",
+          "isActive",
+          "createdAt"
+        ]
+      },
+      "AdminListDTO": {
+        "type": "object",
+        "properties": {
+          "admins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminSummaryDTO"
+            }
+          },
+          "total": {
+            "type": "number",
+            "example": 3
+          }
+        },
+        "required": [
+          "admins",
+          "total"
+        ]
+      },
+      "AdminDeactivatedDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 42
+          },
+          "userName": {
+            "type": "object",
+            "example": "olddesk",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "example": "old@example.com"
+          },
+          "role": {
+            "type": "string",
+            "example": "admin",
+            "description": "Unchanged — deactivating does not alter the role."
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": false
+          },
+          "sessionsRevoked": {
+            "type": "number",
+            "example": 2,
+            "description": "Sessions ended by the deactivation, across all devices."
+          }
+        },
+        "required": [
+          "id",
+          "userName",
+          "email",
+          "role",
+          "isActive",
+          "sessionsRevoked"
+        ]
+      },
+      "CreateAdminDTO": {
+        "type": "object",
+        "properties": {
+          "userName": {
+            "type": "string",
+            "example": "newadmin",
+            "description": "Sign-in name. Must be unique."
+          },
+          "email": {
+            "type": "string",
+            "example": "newadmin@example.com",
+            "description": "Must be unique."
+          },
+          "password": {
+            "type": "string",
+            "example": "pass12",
+            "description": "At least 6 characters. Hashed with bcrypt before storage."
+          },
+          "firstName": {
+            "type": "string",
+            "example": "New"
+          },
+          "lastName": {
+            "type": "string",
+            "example": "Admin"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "example": "admin"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "super_admin"
+            ],
+            "default": "admin",
+            "description": "Defaults to admin. A super admin may also create another super_admin; buyer is rejected — use registration for those."
+          }
+        },
+        "required": [
+          "userName",
+          "email",
+          "password"
+        ]
+      },
+      "AdminCreatedDTO": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 42
+          },
+          "userName": {
+            "type": "object",
+            "example": "newadmin"
+          },
+          "email": {
+            "type": "string",
+            "example": "newadmin@example.com"
+          },
+          "firstName": {
+            "type": "object",
+            "example": "New",
+            "nullable": true
+          },
+          "lastName": {
+            "type": "object",
+            "example": "Admin",
+            "nullable": true
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "super_admin"
+            ],
+            "example": "admin"
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-08-06T18:17:56.193Z"
+          }
+        },
+        "required": [
+          "id",
+          "userName",
+          "email",
+          "firstName",
+          "lastName",
+          "role",
+          "isActive",
+          "createdAt"
         ]
       }
     }

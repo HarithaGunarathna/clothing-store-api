@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { UserService } from './user.service';
 import { User } from './model/user.entity';
 import { UserIdentity } from './model/user-identity.entity';
+import { Address } from './model/address.entity';
 
 describe('UserService', () => {
   let service: UserService;
@@ -14,6 +15,7 @@ describe('UserService', () => {
         UserService,
         { provide: getRepositoryToken(User), useValue: {} },
         { provide: getRepositoryToken(UserIdentity), useValue: {} },
+        { provide: getRepositoryToken(Address), useValue: {} },
         { provide: DataSource, useValue: {} },
       ],
     }).compile();

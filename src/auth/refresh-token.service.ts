@@ -195,6 +195,26 @@ export class RefreshTokenService {
     );
   }
 
+  /**
+   * Ends every session a user has, on all devices.
+   *
+   * Used when a role changes: the role is a claim inside the access token, so
+   * the old one keeps working until it expires. Killing the refresh tokens
+   * stops it being renewed, bounding the stale privilege to one access-token
+   * lifetime instead of thirty days.
+   */
+  async revokeAllForUser(userId: number): Promise<number> {
+    const result = await this.refreshTokenRepository
+      .createQueryBuilder()
+      .update(RefreshToken)
+      .set({ revokedAt: new Date(), revokedReason: REVOKED_BY_LOGOUT })
+      .where('user_id = :userId', { userId })
+      .andWhere('revoked_at IS NULL')
+      .execute();
+
+    return result.affected ?? 0;
+  }
+
   /** True once a family has been ended deliberately, by logout or reuse detection. */
   private async isFamilyTerminated(
     manager: EntityManager,
